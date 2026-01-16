@@ -59,8 +59,7 @@ export default function Index() {
               <Button
                 asChild
                 size="lg"
-                variant="outline"
-                className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
+                className="bg-accent text-accent-foreground hover:bg-accent/90 border-2 border-accent"
               >
                 <Link to="/students">Student Login</Link>
               </Button>
