@@ -61,7 +61,7 @@ export default function Index() {
                 size="lg"
                 className="bg-accent text-accent-foreground hover:bg-accent/90 border-2 border-accent"
               >
-                <Link to="/students">Student Login</Link>
+                <Link to="/student-auth">Student Login</Link>
               </Button>
             </div>
           </div>

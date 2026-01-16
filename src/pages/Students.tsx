@@ -1,5 +1,8 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
-import { issuedBooks, books } from "@/data/mockData";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -9,35 +12,100 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Calendar, User, AlertCircle } from "lucide-react";
+import { BookOpen, Calendar, User, AlertCircle, LogOut } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+
+interface BorrowedBook {
+  id: string;
+  book_id: string;
+  book_title: string;
+  book_author: string;
+  borrowed_at: string;
+  due_date: string;
+  returned_at: string | null;
+  status: string;
+}
 
 export default function Students() {
-  const getBookTitle = (bookId: string) => {
-    const book = books.find((b) => b.id === bookId);
-    return book?.title || "Unknown Book";
-  };
+  const { user, studentProfile, loading, signOut } = useAuth();
+  const navigate = useNavigate();
 
-  const getBookAuthor = (bookId: string) => {
-    const book = books.find((b) => b.id === bookId);
-    return book?.author || "Unknown Author";
-  };
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate("/student-auth");
+    }
+  }, [user, loading, navigate]);
+
+  const { data: borrowedBooks = [], isLoading: booksLoading } = useQuery({
+    queryKey: ["borrowed-books", studentProfile?.id],
+    queryFn: async () => {
+      if (!studentProfile?.id) return [];
+      
+      const { data, error } = await supabase
+        .from("borrowed_books")
+        .select("*")
+        .eq("student_id", studentProfile.id)
+        .order("borrowed_at", { ascending: false });
+
+      if (error) throw error;
+      return data as BorrowedBook[];
+    },
+    enabled: !!studentProfile?.id,
+  });
 
   const isOverdue = (dueDate: string) => {
     return new Date(dueDate) < new Date();
   };
 
-  const activeLoans = issuedBooks.filter((loan) => !loan.returned);
-  const returnedLoans = issuedBooks.filter((loan) => loan.returned);
+  const activeLoans = borrowedBooks.filter((loan) => loan.status === "borrowed");
+  const returnedLoans = borrowedBooks.filter((loan) => loan.status === "returned");
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
+
+  if (loading || booksLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <BookOpen className="h-12 w-12 mx-auto mb-4 text-primary animate-pulse" />
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <Layout>
       {/* Header */}
       <section className="hero-section text-primary-foreground py-12 md:py-16">
-        <div className="container mx-auto px-4 text-center">
-          <h1 className="text-3xl md:text-5xl font-bold mb-4">Student Portal</h1>
-          <p className="text-primary-foreground/80 max-w-2xl mx-auto">
-            View your borrowed books, check due dates, and manage your library account
-          </p>
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="text-center md:text-left">
+              <h1 className="text-3xl md:text-5xl font-bold mb-2">
+                Welcome, {studentProfile?.full_name || "Student"}!
+              </h1>
+              <p className="text-primary-foreground/80">
+                Student ID: {studentProfile?.student_id}
+              </p>
+            </div>
+            <Button
+              onClick={handleSignOut}
+              variant="outline"
+              className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -55,7 +123,7 @@ export default function Students() {
             <div className="glass-card p-6 text-center">
               <Calendar className="h-8 w-8 mx-auto mb-2 text-accent" />
               <p className="text-2xl font-bold text-foreground">
-                {activeLoans.filter((l) => isOverdue(l.dueDate)).length}
+                {activeLoans.filter((l) => isOverdue(l.due_date)).length}
               </p>
               <p className="text-muted-foreground text-sm">Overdue Books</p>
             </div>
@@ -81,8 +149,7 @@ export default function Students() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Book</TableHead>
-                    <TableHead>Student</TableHead>
-                    <TableHead>Issue Date</TableHead>
+                    <TableHead>Borrowed Date</TableHead>
                     <TableHead>Due Date</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
@@ -92,28 +159,20 @@ export default function Students() {
                     <TableRow key={loan.id}>
                       <TableCell>
                         <div>
-                          <p className="font-medium">{getBookTitle(loan.bookId)}</p>
+                          <p className="font-medium">{loan.book_title}</p>
                           <p className="text-sm text-muted-foreground">
-                            {getBookAuthor(loan.bookId)}
+                            {loan.book_author}
                           </p>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <p className="font-medium">{loan.studentName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {loan.studentId}
-                          </p>
-                        </div>
+                        {new Date(loan.borrowed_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
-                        {new Date(loan.issueDate).toLocaleDateString()}
+                        {new Date(loan.due_date).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
-                        {new Date(loan.dueDate).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        {isOverdue(loan.dueDate) ? (
+                        {isOverdue(loan.due_date) ? (
                           <Badge variant="destructive" className="gap-1">
                             <AlertCircle className="h-3 w-3" />
                             Overdue
@@ -130,7 +189,10 @@ export default function Students() {
           ) : (
             <div className="glass-card p-12 text-center">
               <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground">No books currently issued</p>
+              <p className="text-muted-foreground">No books currently borrowed</p>
+              <Button asChild className="mt-4">
+                <a href="/books">Browse Books</a>
+              </Button>
             </div>
           )}
         </div>
@@ -147,9 +209,8 @@ export default function Students() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Book</TableHead>
-                    <TableHead>Student</TableHead>
-                    <TableHead>Issue Date</TableHead>
-                    <TableHead>Due Date</TableHead>
+                    <TableHead>Borrowed Date</TableHead>
+                    <TableHead>Returned Date</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -158,25 +219,19 @@ export default function Students() {
                     <TableRow key={loan.id} className="opacity-75">
                       <TableCell>
                         <div>
-                          <p className="font-medium">{getBookTitle(loan.bookId)}</p>
+                          <p className="font-medium">{loan.book_title}</p>
                           <p className="text-sm text-muted-foreground">
-                            {getBookAuthor(loan.bookId)}
+                            {loan.book_author}
                           </p>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <p className="font-medium">{loan.studentName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {loan.studentId}
-                          </p>
-                        </div>
+                        {new Date(loan.borrowed_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
-                        {new Date(loan.issueDate).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        {new Date(loan.dueDate).toLocaleDateString()}
+                        {loan.returned_at
+                          ? new Date(loan.returned_at).toLocaleDateString()
+                          : "-"}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">Returned</Badge>
